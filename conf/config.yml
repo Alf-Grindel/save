@@ -1,0 +1,10 @@
+server:
+  port: "8080"
+  name: "save"
+  version: "0.0.1"
+
+db:
+  addr: "127.0.0.1:18000"
+  user: "save"
+  password: "save123456"
+  database: "save"
