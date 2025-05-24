@@ -7,11 +7,11 @@ import (
 	"github.com/Alf_Grindel/save/pkg/constant"
 	"github.com/Alf_Grindel/save/pkg/utils"
 	"github.com/Alf_Grindel/save/pkg/utils/errno"
-	"github.com/gorilla/sessions"
+	"github.com/boj/redistore"
 	"net/http"
 )
 
-func AuthLoginMiddleware(store sessions.Store) func(http.Handler) http.Handler {
+func AuthLoginMiddleware(store *redistore.RediStore) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			session, err := store.Get(r, constant.UserLoginState)
@@ -29,7 +29,7 @@ func AuthLoginMiddleware(store sessions.Store) func(http.Handler) http.Handler {
 				utils.RespWithErr(w, errno.NotLoginErr)
 				return
 			}
-			current, err := db.QueryUserByAccount(account)
+			current, err := db.QueryUserByAccount(r.Context(), account)
 			if err != nil {
 				utils.RespWithErr(w, err)
 				return

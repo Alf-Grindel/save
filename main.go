@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"github.com/Alf_Grindel/save/internal/dal"
+	"github.com/Alf_Grindel/save/internal/middleware"
+	"github.com/Alf_Grindel/save/internal/middleware/redis"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,12 +22,14 @@ import (
 func Init() {
 	conf.LoadConfig()
 	dal.Init()
+	redis.Init()
 }
 
 func main() {
 	Init()
 
 	app := NewApplication()
+	defer app.Store.Close()
 
 	route := routes.SetUpRoutes(app)
 
@@ -46,6 +50,11 @@ func main() {
 	}
 
 	hlog.Info("start connect server on port 8080 ...")
+
+	taskCtx, taskCancel := context.WithCancel(context.Background())
+	defer taskCancel()
+
+	go middleware.DoCacheRecommendUser(taskCtx)
 
 	go func() {
 		err := server.ListenAndServe()

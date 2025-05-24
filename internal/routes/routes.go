@@ -16,6 +16,7 @@ func SetUpRoutes(app *app.Application) *mux.Router {
 		public.HandleFunc("/user/login", app.UserHandler.UserLogin).Methods("POST")
 	}
 
+	// need user login
 	authLogin := r.PathPrefix("").Subrouter()
 	authLogin.Use(middleware.AuthLoginMiddleware(app.Store))
 	{
@@ -24,6 +25,7 @@ func SetUpRoutes(app *app.Application) *mux.Router {
 		authLogin.HandleFunc("/user/update", app.UserHandler.UserUpdate).Methods("POST")
 		authLogin.HandleFunc("/user/drop", app.UserHandler.UserDrop).Methods("POST")
 		authLogin.HandleFunc("/user/search/tags", app.UserHandler.SearchUserByTags).Methods("GET")
+		authLogin.HandleFunc("/user/recommend", app.UserHandler.RecommendUser).Methods("GET")
 	}
 
 	return r

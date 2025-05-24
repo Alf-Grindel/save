@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"encoding/json"
 	"github.com/Alf_Grindel/save/internal/model/basic/user"
 	"github.com/Alf_Grindel/save/pkg/constant"
@@ -28,16 +29,18 @@ func (User) TableName() string {
 	return constant.UserTableName
 }
 
+var s = utils.NewSnowflake(constant.MachineID)
+
 // CreateUser create user info
-func CreateUser(account, hashPassword string) (int64, error) {
-	snowId := utils.NewSnowflake(constant.MachineID).GenerateID()
+func CreateUser(ctx context.Context, account, hashPassword string) (int64, error) {
+	snowId := s.GenerateID()
 
 	u := &User{
 		Id:       snowId,
 		Account:  account,
 		Password: hashPassword,
 	}
-	result := DB.Select("id", "account", "password").Create(&u)
+	result := DB.WithContext(ctx).Select("id", "account", "password").Create(&u)
 	if err := result.Error; err != nil {
 		hlog.Error(err)
 		return -1, errno.SystemErr
@@ -46,9 +49,9 @@ func CreateUser(account, hashPassword string) (int64, error) {
 }
 
 // QueryUserByAccount query user by account
-func QueryUserByAccount(account string) (*User, error) {
+func QueryUserByAccount(ctx context.Context, account string) (*User, error) {
 	u := &User{}
-	result := DB.Where("user_account = ?", account).First(&u)
+	result := DB.WithContext(ctx).Where("user_account = ?", account).First(&u)
 	if err := result.Error; err != nil {
 		hlog.Error(err)
 		return nil, errno.SystemErr
@@ -57,9 +60,9 @@ func QueryUserByAccount(account string) (*User, error) {
 }
 
 // QueryUserById query user by id
-func QueryUserById(id int64) (*User, error) {
+func QueryUserById(ctx context.Context, id int64) (*User, error) {
 	u := &User{}
-	result := DB.Where("id = ? and is_delete = 0", id).First(&u)
+	result := DB.WithContext(ctx).Where("id = ? and is_delete = 0", id).First(&u)
 	if err := result.Error; err != nil {
 		hlog.Error(err)
 		return nil, errno.SystemErr
@@ -68,8 +71,8 @@ func QueryUserById(id int64) (*User, error) {
 }
 
 // QueryUserByTags query user by tags
-func QueryUserByTags(tags []string) (*[]User, error) {
-	var users *[]User
+func QueryUserByTags(ctx context.Context, tags []string) ([]User, error) {
+	var users []User
 	result := DB
 	for _, tag := range tags {
 		jsonTag, err := json.Marshal([]string{tag})
@@ -79,7 +82,7 @@ func QueryUserByTags(tags []string) (*[]User, error) {
 		}
 		result = result.Where("JSON_CONTAINS(tags, ?)", string(jsonTag))
 	}
-	if err := result.Find(&users).Error; err != nil {
+	if err := result.WithContext(ctx).Find(&users).Error; err != nil {
 		hlog.Error(err)
 		return nil, errno.SystemErr
 	}
@@ -88,9 +91,30 @@ func QueryUserByTags(tags []string) (*[]User, error) {
 }
 
 // QueryUser query all user
-func QueryUser() (*[]User, error) {
-	var users *[]User
-	if err := DB.Find(&users).Error; err != nil {
+func QueryUser(ctx context.Context) ([]User, error) {
+	var users []User
+	if err := DB.WithContext(ctx).Where("is_delete = 0").Find(&users).Error; err != nil {
+		hlog.Error(err)
+		return nil, errno.SystemErr
+	}
+	return users, nil
+}
+
+// QueryUserByList query all user by return list
+func QueryUserByList(ctx context.Context, currentPage, pageSize int64) ([]User, error) {
+	var users []User
+	var total int64
+
+	if err := DB.WithContext(ctx).Model(&users).Where("is_delete = 0").Count(&total).Error; err != nil {
+		hlog.Error(err)
+		return nil, errno.SystemErr
+	}
+	if total <= 0 {
+		hlog.Error("sql having no data")
+		return nil, errno.SystemErr
+	}
+	result := DB.WithContext(ctx).Limit(int(pageSize)).Offset(int(pageSize * (currentPage - 1))).Where("is_delete = 0").Find(&users)
+	if err := result.Error; err != nil {
 		hlog.Error(err)
 		return nil, errno.SystemErr
 	}
@@ -98,7 +122,7 @@ func QueryUser() (*[]User, error) {
 }
 
 // UpdateUser update user when user login
-func UpdateUser(account string, req *user.UserUpdateReq) (*User, error) {
+func UpdateUser(ctx context.Context, account string, req *user.UserUpdateReq) (*User, error) {
 	u := &User{
 		Password: strings.TrimSpace(req.Password),
 		Name:     strings.TrimSpace(req.Name),
@@ -107,8 +131,8 @@ func UpdateUser(account string, req *user.UserUpdateReq) (*User, error) {
 		Tags:     strings.TrimSpace(req.Tags),
 	}
 	current := &User{}
-	DB.Where("user_account = ?", account).First(&current)
-	result := DB.Model(&current).Updates(&u)
+	DB.WithContext(ctx).Where("user_account = ?", account).First(&current)
+	result := DB.WithContext(ctx).Model(&current).Updates(&u)
 	if err := result.Error; err != nil {
 		hlog.Error(err)
 		return nil, errno.SystemErr
@@ -117,9 +141,9 @@ func UpdateUser(account string, req *user.UserUpdateReq) (*User, error) {
 }
 
 // DropUser delete login user
-func DropUser(account string) (bool, error) {
+func DropUser(ctx context.Context, account string) (bool, error) {
 	u := &User{}
-	result := DB.Where("user_account = ?", account).First(&u).Update("is_delete", 1)
+	result := DB.WithContext(ctx).Where("user_account = ?", account).First(&u).Update("is_delete", 1)
 	if err := result.Error; err != nil {
 		hlog.Fatal(err)
 		return false, errno.SystemErr

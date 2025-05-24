@@ -13,7 +13,12 @@ type db struct {
 	Database string
 }
 
+type redis struct {
+	Addr string
+}
+
 type Config struct {
 	Server server
 	Db     db
+	Redis  redis
 }

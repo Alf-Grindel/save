@@ -13,6 +13,7 @@ import (
 var (
 	Server        *server
 	DB            *db
+	Redis         *redis
 	runtime_viper = viper.New()
 )
 
@@ -47,6 +48,7 @@ func configMapping() {
 	}
 	Server = &c.Server
 	DB = &c.Db
+	Redis = &c.Redis
 }
 
 func getPath(path string) string {

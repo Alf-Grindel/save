@@ -8,3 +8,6 @@ db:
   user: "save"
   password: "save123456"
   database: "save"
+
+redis:
+  addr: "127.0.0.1:18003"

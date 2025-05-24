@@ -69,3 +69,13 @@ type SearchUserByTagsResp struct {
 	Base  utils.BaseResp `json:"base"`
 	Users []UserVo       `json:"user"`
 }
+
+type RecommendUserReq struct {
+	PageSize    int64 `json:"page_size"`
+	CurrentPage int64 `json:"current_page"`
+}
+
+type RecommendUserResp struct {
+	Base  utils.BaseResp `json:"base"`
+	Users []UserVo       `json:"user"`
+}

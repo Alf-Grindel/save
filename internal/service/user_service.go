@@ -3,26 +3,26 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/Alf_Grindel/save/internal/dal/db"
+	"github.com/Alf_Grindel/save/internal/middleware/redis"
 	"github.com/Alf_Grindel/save/internal/model/basic/user"
 	"github.com/Alf_Grindel/save/pkg/constant"
 	"github.com/Alf_Grindel/save/pkg/utils"
 	"github.com/Alf_Grindel/save/pkg/utils/errno"
+	"github.com/Alf_Grindel/save/pkg/utils/hlog"
 	"regexp"
 )
 
 type UserService struct {
-	ctx context.Context
 }
 
-func NewUserService(ctx context.Context) *UserService {
-	return &UserService{
-		ctx: ctx,
-	}
+func NewUserService() *UserService {
+	return &UserService{}
 }
 
 // UserRegister register user and return user id
-func (s *UserService) UserRegister(req *user.UserRegisterReq) (int64, error) {
+func (s *UserService) UserRegister(ctx context.Context, req *user.UserRegisterReq) (int64, error) {
 	account := req.Account
 	password := req.Password
 	checkPassword := req.CheckPassword
@@ -42,11 +42,11 @@ func (s *UserService) UserRegister(req *user.UserRegisterReq) (int64, error) {
 	if !reg.MatchString(account) {
 		return -1, errno.ParamErr.WithMessage("account can only contain numbers or letters")
 	}
-	if _, err := db.QueryUserByAccount(account); err == nil {
+	if _, err := db.QueryUserByAccount(ctx, account); err == nil {
 		return -1, errno.ParamErr.WithMessage("account already exist or password is wrong")
 	}
 	hashPassword := utils.HashPassword(password)
-	id, err := db.CreateUser(account, hashPassword)
+	id, err := db.CreateUser(ctx, account, hashPassword)
 	if err != nil {
 		return -1, err
 	}
@@ -54,7 +54,7 @@ func (s *UserService) UserRegister(req *user.UserRegisterReq) (int64, error) {
 }
 
 // UserLogin login user and return safety user info
-func (s *UserService) UserLogin(req *user.UserLoginReq) (*user.UserVo, error) {
+func (s *UserService) UserLogin(ctx context.Context, req *user.UserLoginReq) (*user.UserVo, error) {
 	account := req.Account
 	password := req.Password
 	if len(account) == 0 || len(password) == 0 {
@@ -70,7 +70,7 @@ func (s *UserService) UserLogin(req *user.UserLoginReq) (*user.UserVo, error) {
 	if !reg.MatchString(account) {
 		return nil, errno.ParamErr.WithMessage("account can only contain numbers or letters")
 	}
-	current, err := db.QueryUserByAccount(account)
+	current, err := db.QueryUserByAccount(ctx, account)
 	if err != nil {
 		return nil, errno.ParamErr.WithMessage("account not exist or password is wrong ")
 	}
@@ -81,7 +81,7 @@ func (s *UserService) UserLogin(req *user.UserLoginReq) (*user.UserVo, error) {
 }
 
 // UserUpdate update user and return safety user info
-func (s *UserService) UserUpdate(req *user.UserUpdateReq) (*user.UserVo, error) {
+func (s *UserService) UserUpdate(ctx context.Context, req *user.UserUpdateReq) (*user.UserVo, error) {
 	if len(req.Password) != 0 {
 		if len(req.Password) < 8 {
 			return nil, errno.ParamErr.WithMessage("password length must greater than 8")
@@ -89,54 +89,91 @@ func (s *UserService) UserUpdate(req *user.UserUpdateReq) (*user.UserVo, error) 
 		req.Password = utils.HashPassword(req.Password)
 	}
 
-	userinfo, ok := s.ctx.Value(constant.CtxUserInfoKey).(*user.UserVo)
+	userinfo, ok := ctx.Value(constant.CtxUserInfoKey).(*user.UserVo)
 	if !ok || userinfo == nil {
 		return nil, errno.SystemErr
 	}
-	current, err := db.UpdateUser(userinfo.Account, req)
+	current, err := db.UpdateUser(ctx, userinfo.Account, req)
 	if err != nil {
 		return nil, err
 	}
-	user := GetSafeUser(current)
-	return user, nil
+	u := GetSafeUser(current)
+	return u, nil
 }
 
 // SearchUserByTags search user by tags in memory return safety user info
-func (s *UserService) SearchUserByTags(req *user.SearchUserByTagsReq) ([]*user.UserVo, error) {
+func (s *UserService) SearchUserByTags(ctx context.Context, req *user.SearchUserByTagsReq) ([]user.UserVo, error) {
 	tags := req.Tags
 	if len(tags) == 0 {
 		return nil, errno.ParamErr.WithMessage("parameter is empty")
 	}
-	currents, err := db.QueryUser()
+	currents, err := db.QueryUser(ctx)
 	if err != nil {
 		return nil, err
 	}
-	var users []*user.UserVo
-	for _, current := range *currents {
+	var users []user.UserVo
+	for _, current := range currents {
 		var userTags []string
 		if err := json.Unmarshal([]byte(current.Tags), &userTags); err != nil {
 			continue
 		}
 		if containsAllTags(userTags, tags) {
-			users = append(users, GetSafeUser(&current))
+			users = append(users, *GetSafeUser(&current))
 		}
 	}
 	return users, nil
 }
 
-// SearchUserByTagsBySQL search user by tags in sql return safety user info
-func (s *UserService) SearchUserByTagsBySQL(req *user.SearchUserByTagsReq) ([]*user.UserVo, error) {
-	tags := req.Tags
-	if len(tags) == 0 {
-		return nil, errno.ParamErr.WithMessage("parameter is empty")
+// RecommendUser recommend user
+func (s *UserService) RecommendUser(ctx context.Context, req *user.RecommendUserReq) ([]user.UserVo, error) {
+	pageSize := req.PageSize
+	currentPage := req.CurrentPage
+	if pageSize <= 0 {
+		pageSize = constant.PageSize
 	}
-	currents, err := db.QueryUserByTags(tags)
+	if currentPage <= 0 {
+		currentPage = constant.CurrentPage
+	}
+
+	userInfo, ok := ctx.Value(constant.CtxUserInfoKey).(*user.UserVo)
+	if !ok || userInfo == nil {
+		return nil, errno.NotLoginErr
+	}
+	var rdbRecommend redis.Recommend
+	var users []user.UserVo
+
+	redisKey := fmt.Sprintf(constant.UserRecommendRedisKey, userInfo.Id, currentPage, pageSize)
+	// check cache is or not having data
+	if rdbRecommend.ExistRecommend(ctx, redisKey) {
+		// if exist return in cache
+		dataJson, err := rdbRecommend.GetRecommend(ctx, redisKey)
+		if err != nil {
+			hlog.Error("redis error, ", err)
+			return nil, errno.SystemErr
+		}
+		err = json.Unmarshal([]byte(dataJson), &users)
+		if err != nil {
+			hlog.Error("json unmarshal error, ", err)
+			return nil, errno.SystemErr
+		}
+		return users, nil
+	}
+	currents, err := db.QueryUserByList(ctx, currentPage, pageSize)
 	if err != nil {
 		return nil, err
 	}
-	var users []*user.UserVo
-	for _, current := range *currents {
-		users = append(users, GetSafeUser(&current))
+	for _, current := range currents {
+		users = append(users, *GetSafeUser(&current))
+	}
+	// add data in cache
+	data, err := json.Marshal(users)
+	if err != nil {
+		hlog.Error("json marshal error, ", err)
+		return nil, errno.SystemErr
+	}
+	err = rdbRecommend.AddRecommend(ctx, redisKey, data)
+	if err != nil {
+		hlog.Error("add key to redis failed, ", err)
 	}
 	return users, nil
 }
@@ -160,7 +197,7 @@ func GetSafeUser(current *db.User) *user.UserVo {
 	if current == nil {
 		return nil
 	}
-	user := &user.UserVo{
+	u := &user.UserVo{
 		Id:         current.Id,
 		Account:    current.Account,
 		Name:       current.Name,
@@ -169,5 +206,22 @@ func GetSafeUser(current *db.User) *user.UserVo {
 		Tags:       current.Tags,
 		CreateTime: current.CreateTime.Format("2006-01-02 15:04:05"),
 	}
-	return user
+	return u
+}
+
+// SearchUserByTagsBySQL search user by tags in sql return safety user info
+func (s *UserService) SearchUserByTagsBySQL(ctx context.Context, req *user.SearchUserByTagsReq) ([]user.UserVo, error) {
+	tags := req.Tags
+	if len(tags) == 0 {
+		return nil, errno.ParamErr.WithMessage("parameter is empty")
+	}
+	currents, err := db.QueryUserByTags(ctx, tags)
+	if err != nil {
+		return nil, err
+	}
+	var users []user.UserVo
+	for _, current := range currents {
+		users = append(users, *GetSafeUser(&current))
+	}
+	return users, nil
 }

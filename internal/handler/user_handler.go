@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"encoding/json"
 	"github.com/Alf_Grindel/save/internal/dal/db"
 	"github.com/Alf_Grindel/save/internal/model/basic/user"
@@ -9,18 +8,17 @@ import (
 	"github.com/Alf_Grindel/save/pkg/constant"
 	"github.com/Alf_Grindel/save/pkg/utils"
 	"github.com/Alf_Grindel/save/pkg/utils/errno"
+	"github.com/boj/redistore"
 	"github.com/gorilla/sessions"
 	"net/http"
 )
 
 type UserHandler struct {
-	ctx   context.Context
-	store sessions.Store
+	store *redistore.RediStore
 }
 
-func NewUserHandler(ctx context.Context, store sessions.Store) *UserHandler {
+func NewUserHandler(store *redistore.RediStore) *UserHandler {
 	return &UserHandler{
-		ctx:   ctx,
 		store: store,
 	}
 }
@@ -32,7 +30,7 @@ func (uh *UserHandler) UserRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer r.Body.Close()
-	id, err := service.NewUserService(uh.ctx).UserRegister(&req)
+	id, err := service.NewUserService().UserRegister(r.Context(), &req)
 	if err != nil {
 		utils.RespWithErr(w, err)
 		return
@@ -55,7 +53,7 @@ func (uh *UserHandler) UserLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer r.Body.Close()
-	u, err := service.NewUserService(uh.ctx).UserLogin(&req)
+	u, err := service.NewUserService().UserLogin(r.Context(), &req)
 	if err != nil {
 		utils.RespWithErr(w, err)
 		return
@@ -108,7 +106,8 @@ func (uh *UserHandler) UserUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer r.Body.Close()
-	u, err := service.NewUserService(r.Context()).UserUpdate(&req)
+
+	u, err := service.NewUserService().UserUpdate(r.Context(), &req)
 	if err != nil {
 		utils.RespWithErr(w, err)
 		return
@@ -135,7 +134,7 @@ func (uh *UserHandler) UserDrop(w http.ResponseWriter, r *http.Request) {
 		utils.RespWithErr(w, errno.ParamErr.WithMessage("account is not match"))
 		return
 	}
-	if isDrop, err := db.DropUser(req.Account); err != nil && !isDrop {
+	if isDrop, err := db.DropUser(r.Context(), req.Account); err != nil && !isDrop {
 		utils.RespWithErr(w, err)
 		return
 	}
@@ -152,18 +151,33 @@ func (uh *UserHandler) SearchUserByTags(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer r.Body.Close()
-	users, err := service.NewUserService(uh.ctx).SearchUserByTagsBySQL(&req)
+	users, err := service.NewUserService().SearchUserByTags(r.Context(), &req)
 	if err != nil {
 		utils.RespWithErr(w, err)
 		return
 	}
-	var userList []user.UserVo
-	for _, u := range users {
-		userList = append(userList, *u)
-	}
 	resp := &user.SearchUserByTagsResp{
 		Base:  utils.BaseResp{StatusCode: errno.SuccessCode, StatusMsg: "OK"},
-		Users: userList,
+		Users: users,
+	}
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (uh *UserHandler) RecommendUser(w http.ResponseWriter, r *http.Request) {
+	var req user.RecommendUserReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.RespWithErr(w, errno.ConvertErr(err))
+		return
+	}
+	users, err := service.NewUserService().RecommendUser(r.Context(), &req)
+	if err != nil {
+		utils.RespWithErr(w, err)
+		return
+	}
+
+	resp := &user.RecommendUserResp{
+		Base:  utils.BaseResp{StatusCode: errno.SuccessCode, StatusMsg: "OK"},
+		Users: users,
 	}
 	_ = json.NewEncoder(w).Encode(resp)
 }
