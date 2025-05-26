@@ -7,7 +7,7 @@ import (
 type UserVo struct {
 	Id         int64  `json:"id"`
 	Account    string `json:"account"`
-	Name       string `json:"name"`
+	UserName   string `json:"user_name"`
 	Avatar     string `json:"avatar"`
 	Profile    string `json:"profile"`
 	Tags       string `json:"tags"`
@@ -42,7 +42,7 @@ type GetCurrentResp struct {
 
 type UserUpdateReq struct {
 	Password string `json:"password"`
-	Name     string `json:"name"`
+	UserName string `json:"user_name"`
 	Avatar   string `json:"avatar"`
 	Profile  string `json:"profile"`
 	Tags     string `json:"tags"`
@@ -76,6 +76,11 @@ type RecommendUserReq struct {
 }
 
 type RecommendUserResp struct {
+	Base  utils.BaseResp `json:"base"`
+	Users []UserVo       `json:"user"`
+}
+
+type MatchUserResp struct {
 	Base  utils.BaseResp `json:"base"`
 	Users []UserVo       `json:"user"`
 }

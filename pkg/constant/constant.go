@@ -9,7 +9,10 @@ const (
 
 // constants in the project
 const (
-	MachineID      = 0
+	UserTableMachineID     = 0
+	TeamTableMachineID     = 1
+	UserTeamTableMachineID = 2
+
 	Salt           = "saveM814"
 	UserLoginState = "User_Login_State"
 
@@ -18,8 +21,13 @@ const (
 
 	UserRecommendRedisKey = "save:user:recommend:%v:%d:%d"
 	PrecacheLockRedisKey  = "save:precache:docache:lock"
+	JoinTeamLockRedisKey  = "save:join_team:lock"
 
-	UserTableName = "users"
+	MatchNum = 21
+
+	UserTableName     = "users"
+	TeamTableName     = "teams"
+	UserTeamTableName = "user_team"
 
 	PageSize    = 10
 	CurrentPage = 1

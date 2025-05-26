@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"github.com/Alf_Grindel/save/internal/dal/db"
 	"github.com/Alf_Grindel/save/internal/middleware/redis"
+	"github.com/Alf_Grindel/save/internal/model"
 	"github.com/Alf_Grindel/save/internal/model/basic/user"
 	"github.com/Alf_Grindel/save/pkg/constant"
 	"github.com/Alf_Grindel/save/pkg/utils"
 	"github.com/Alf_Grindel/save/pkg/utils/errno"
 	"github.com/Alf_Grindel/save/pkg/utils/hlog"
 	"regexp"
+	"sort"
 )
 
 type UserService struct {
@@ -193,14 +195,14 @@ func containsAllTags(userTags, searchTags []string) bool {
 }
 
 // GetSafeUser return safety user info
-func GetSafeUser(current *db.User) *user.UserVo {
+func GetSafeUser(current *model.User) *user.UserVo {
 	if current == nil {
 		return nil
 	}
 	u := &user.UserVo{
 		Id:         current.Id,
 		Account:    current.Account,
-		Name:       current.Name,
+		UserName:   current.UserName,
 		Avatar:     current.Avatar,
 		Profile:    current.Profile,
 		Tags:       current.Tags,
@@ -224,4 +226,55 @@ func (s *UserService) SearchUserByTagsBySQL(ctx context.Context, req *user.Searc
 		users = append(users, *GetSafeUser(&current))
 	}
 	return users, nil
+}
+
+func (s *UserService) MatchUsers(ctx context.Context) ([]user.UserVo, error) {
+	userInfo, ok := ctx.Value(constant.CtxUserInfoKey).(*user.UserVo)
+	if !ok || userInfo == nil {
+		return nil, errno.NotLoginErr
+	}
+	if userInfo.Tags == "" {
+		return nil, errno.ParamErr.WithMessage("当前用户标签为空")
+	}
+	var allUsers []model.User
+	if err := db.DB.WithContext(ctx).Select("id", "tags").Where("tags is not null").
+		Find(&allUsers).Error; err != nil {
+		hlog.Error(err)
+		return nil, errno.SystemErr
+	}
+	var loginTags []string
+	if err := json.Unmarshal([]byte(userInfo.Tags), &loginTags); err != nil {
+		hlog.Error("用户标签解析失败")
+		return nil, errno.SystemErr
+	}
+	type userScore struct {
+		Id       int64
+		Distance int
+	}
+	var userScores []userScore
+	for _, u := range allUsers {
+		if u.Id == userInfo.Id || u.Tags == "" {
+			continue
+		}
+		var userTags []string
+		if err := json.Unmarshal([]byte(u.Tags), &userTags); err != nil {
+			hlog.Error("用户标签解析失败")
+			continue
+		}
+		distance := utils.MinDistance(loginTags, userTags)
+		userScores = append(userScores, userScore{Id: u.Id, Distance: distance})
+	}
+	sort.Slice(userScores, func(i, j int) bool {
+		return userScores[i].Distance < userScores[j].Distance
+	})
+	topUserScores := userScores[:constant.MatchNum]
+	var matchUsers []user.UserVo
+	for _, userIdScore := range topUserScores {
+		current, err := db.QueryUserById(ctx, userIdScore.Id)
+		if err != nil {
+			return nil, err
+		}
+		matchUsers = append(matchUsers, *GetSafeUser(current))
+	}
+	return matchUsers, nil
 }

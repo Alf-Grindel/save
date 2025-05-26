@@ -53,7 +53,6 @@ func DoCacheRecommendUser(taskCtx context.Context) {
 		err := mx.LockContext(ctx)
 		if err != nil {
 			hlog.Error("Lock failed", err)
-			return
 		}
 		defer mx.UnlockContext(ctx)
 

@@ -13,6 +13,7 @@ type Application struct {
 	Logger      hlog.FullLogger
 	Store       *redistore.RediStore
 	UserHandler *handler.UserHandler
+	TeamHandler *handler.TeamHandler
 }
 
 func NewApplication() *Application {
@@ -29,11 +30,13 @@ func NewApplication() *Application {
 	}
 
 	userHandler := handler.NewUserHandler(store)
+	teamHandler := handler.NewTeamHandler()
 
 	app := &Application{
 		Logger:      logger,
 		Store:       store,
 		UserHandler: userHandler,
+		TeamHandler: teamHandler,
 	}
 
 	return app

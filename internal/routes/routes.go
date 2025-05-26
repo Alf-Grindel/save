@@ -20,12 +20,30 @@ func SetUpRoutes(app *app.Application) *mux.Router {
 	authLogin := r.PathPrefix("").Subrouter()
 	authLogin.Use(middleware.AuthLoginMiddleware(app.Store))
 	{
-		authLogin.HandleFunc("/user/current", app.UserHandler.GetCurrentUser).Methods("GET")
-		authLogin.HandleFunc("/user/logout", app.UserHandler.UserLogout).Methods("POST")
-		authLogin.HandleFunc("/user/update", app.UserHandler.UserUpdate).Methods("POST")
-		authLogin.HandleFunc("/user/drop", app.UserHandler.UserDrop).Methods("POST")
-		authLogin.HandleFunc("/user/search/tags", app.UserHandler.SearchUserByTags).Methods("GET")
-		authLogin.HandleFunc("/user/recommend", app.UserHandler.RecommendUser).Methods("GET")
+		userMethod := authLogin.PathPrefix("/user").Subrouter()
+		{
+			userMethod.HandleFunc("/current", app.UserHandler.GetCurrentUser).Methods("GET")
+			userMethod.HandleFunc("/logout", app.UserHandler.UserLogout).Methods("POST")
+			userMethod.HandleFunc("/update", app.UserHandler.UserUpdate).Methods("POST")
+			userMethod.HandleFunc("/drop", app.UserHandler.UserDrop).Methods("POST")
+			userMethod.HandleFunc("/search/tags", app.UserHandler.SearchUserByTags).Methods("GET")
+			userMethod.HandleFunc("/recommend", app.UserHandler.RecommendUser).Methods("GET")
+			userMethod.HandleFunc("/match", app.UserHandler.MatchUser).Methods("GET")
+		}
+
+		teamMethod := authLogin.PathPrefix("/team").Subrouter()
+		{
+			teamMethod.HandleFunc("/add", app.TeamHandler.AddTeam).Methods("POST")
+			teamMethod.HandleFunc("/update", app.TeamHandler.UpdateTeam).Methods("POST")
+			teamMethod.HandleFunc("/get", app.TeamHandler.GetTeamById).Methods("GET")
+			teamMethod.HandleFunc("/list", app.TeamHandler.ListTeams).Methods("GET")
+			teamMethod.HandleFunc("/join", app.TeamHandler.JoinTeam).Methods("POST")
+			teamMethod.HandleFunc("/quit", app.TeamHandler.QuitTeam).Methods("POST")
+			teamMethod.HandleFunc("/delete", app.TeamHandler.DeleteTeam).Methods("POST")
+			teamMethod.HandleFunc("/list/my/create", app.TeamHandler.ListMyCreateTeams).Methods("GET")
+			teamMethod.HandleFunc("/list/my/join", app.TeamHandler.ListMyJoinTeams).Methods("GET")
+		}
+
 	}
 
 	return r

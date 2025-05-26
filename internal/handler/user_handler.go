@@ -181,3 +181,17 @@ func (uh *UserHandler) RecommendUser(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.NewEncoder(w).Encode(resp)
 }
+
+func (uh *UserHandler) MatchUser(w http.ResponseWriter, r *http.Request) {
+	users, err := service.NewUserService().MatchUsers(r.Context())
+	if err != nil {
+		utils.RespWithErr(w, err)
+		return
+	}
+
+	resp := &user.MatchUserResp{
+		Base:  utils.BaseResp{StatusCode: errno.SuccessCode, StatusMsg: "OK"},
+		Users: users,
+	}
+	_ = json.NewEncoder(w).Encode(resp)
+}
